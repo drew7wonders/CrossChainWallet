@@ -1,50 +1,48 @@
-pragma solidity ^0.7.0;
+pragma solidity ^0.5.0;
 
 contract CrossChainWallet {
-address public owner;
-mapping(address => uint) public balances;
-mapping(bytes32 => bool) public pendingTransactions;
-constructor() public {
-    owner = msg.sender;
-}
+    address public owner;
+    mapping (address => uint) public balances;
 
-function deposit(bytes32 _transactionId, uint _amount) public {
-    require(_transactionId != 0x0, "Transaction ID cannot be empty");
-    require(!pendingTransactions[_transactionId], "Transaction already exists");
+    constructor() public {
+        owner = msg.sender;
+    }
 
-    pendingTransactions[_transactionId] = true;
-    emit Deposit(_transactionId, _amount);
-}
+    function deposit(address token, uint amount) public {
+        // Ensure the message is coming from the correct chain
+        require(msg.sender == token, "Incorrect chain");
 
-function confirmDeposit(bytes32 _transactionId, uint _amount) public {
-    require(pendingTransactions[_transactionId], "Transaction does not exist");
-    require(_amount != 0, "Amount must be greater than 0");
+        // Update the balance of the depositor
+        balances[msg.sender] += amount;
+    }
 
-    pendingTransactions[_transactionId] = false;
-    balances[msg.sender] += _amount;
-    emit ConfirmDeposit(_transactionId, _amount);
-}
+    function withdraw(address token, uint amount) public {
+        // Ensure the message is coming from the correct chain
+        require(msg.sender == token, "Incorrect chain");
 
-function withdraw(bytes32 _transactionId, address _to, uint _amount) public {
-    require(_transactionId != 0x0, "Transaction ID cannot be empty");
-    require(!pendingTransactions[_transactionId], "Transaction already exists");
-    require(balances[msg.sender] >= _amount, "Insufficient balance");
+        // Check if the depositor has sufficient balance
+        require(balances[msg.sender] >= amount, "Insufficient balance");
 
-    pendingTransactions[_transactionId] = true;
-    balances[msg.sender] -= _amount;
-    emit Withdraw(_transactionId, _to, _amount);
-}
+        // Transfer the funds to the recipient on the other chain
+        (bool success, ) = token.transfer(msg.sender, amount);
 
-function confirmWithdraw(bytes32 _transactionId, uint _amount) public {
-    require(pendingTransactions[_transactionId], "Transaction does not exist");
-    require(_amount != 0, "Amount must be greater than 0");
+        // Update the balance of the depositor
+        balances[msg.sender] -= amount;
 
-    pendingTransactions[_transactionId] = false;
-    emit ConfirmWithdraw(_transactionId, _amount);
-}
+        // If the transfer failed, revert the transaction
+        require(success, "Transfer failed");
+    }
 
-event Deposit(bytes32 _transactionId, uint _amount);
-event ConfirmDeposit(bytes32 _transactionId, uint _amount);
-event Withdraw(bytes32 _transactionId, address _to, uint _amount);
-event ConfirmWithdraw(bytes32 _transactionId, uint _amount);
+    function getBalance(address account) public view returns (uint) {
+        return balances[account];
+    }
+
+    function transfer(address recipient, uint amount) public {
+        // Check if the sender has sufficient balance
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+
+        // Transfer the funds to the recipient
+        balances[recipient] += amount;
+        balances[msg.sender] -= amount;
+    }
 }
